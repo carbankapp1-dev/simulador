@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador de Financiamento</title>
+<style>
+  :root{--verde:#46da86;--azul:#111741;--azul-escuro:#142037;
+    --bg:#f3f5f8;--card:#fff;--ink:var(--azul-escuro);--muted:#5b6475;--line:#d9dee7;
+    --accent:var(--azul);--onaccent:#fff;--green:#e8faf0;--greenb:var(--verde);--warn:#a15c00}
+  @media (prefers-color-scheme: dark){:root{--bg:var(--azul-escuro);--card:var(--azul);--ink:#e8ecf3;--muted:#9aa4b8;--line:#26305a;
+    --accent:var(--verde);--onaccent:var(--azul);--green:#16305a;--warn:#f0b35a}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  main{max-width:520px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:1.35rem;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 20px;font-size:.9rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px}
+  label{display:block;font-size:.85rem;color:var(--muted);margin:0 0 4px}
+  .f{margin-bottom:14px}
+  input,select{width:100%;padding:11px 12px;font-size:1.05rem;border:2px solid var(--greenb);background:var(--green);color:var(--ink);border-radius:8px;text-align:right;font-variant-numeric:tabular-nums}
+  select{text-align:left}
+  input:focus,select:focus{outline:none;box-shadow:0 0 0 3px rgba(70,218,134,.35)}
+  h1{color:var(--ink)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .hint{font-size:.8rem;color:var(--muted);margin-top:4px;text-align:right}
+  .result{background:var(--accent);color:var(--onaccent);border-radius:12px;padding:20px;text-align:center;margin-bottom:16px}
+  .result small{display:block;opacity:.85;font-size:.85rem;letter-spacing:.04em;text-transform:uppercase}
+  .result strong{display:block;font-size:2.2rem;font-variant-numeric:tabular-nums;margin-top:4px}
+  .result span{display:block;font-size:.85rem;opacity:.85;margin-top:4px}
+  #status{font-size:.9rem;color:var(--muted);text-align:center;padding:8px}
+  #avisos{color:var(--warn);font-size:.85rem;margin:0 0 16px}
+  #avisos p{margin:4px 0}
+  .busy{opacity:.5;transition:opacity .15s}
+</style>
+</head>
+<body>
+<main>
+  <h1>Simulador de Financiamento</h1>
+  <p class="sub">Preencha os campos verdes. O cálculo usa as fórmulas da planilha <code>simulador.xlsm</code>.</p>
+
+  <div class="card">
+    <div class="f">
+      <label for="tipo">Modalidade</label>
+      <select id="tipo">
+        <option>CDC PF</option><option>CDC PJ</option><option>CDC MOTO</option><option>LEASING</option>
+      </select>
+    </div>
+    <div class="f">
+      <label for="veiculo">Valor do veículo (R$)</label>
+      <input id="veiculo" class="money" inputmode="numeric" value="150.000,00">
+    </div>
+    <div class="f">
+      <label for="entrada">Entrada (R$)</label>
+      <input id="entrada" class="money" inputmode="numeric" value="70.000,00">
+      <div class="hint" id="pctEntrada"></div>
+    </div>
+    <div class="row">
+      <div class="f">
+        <label for="prazo">Qtde de pagamentos</label>
+        <input id="prazo" inputmode="numeric" value="60">
+      </div>
+      <div class="f">
+        <label for="taxa">Taxa de juros a.m. (%)</label>
+        <input id="taxa" inputmode="decimal" value="1,41">
+      </div>
+    </div>
+  </div>
+
+  <div id="status">Carregando planilha…</div>
+
+  <div class="result" id="resBox">
+    <small>Valor da parcela</small>
+    <strong id="parcela">–</strong>
+    <span id="venc"></span>
+  </div>
+
+  <div id="avisos"></div>
+
+</main>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/hyperformula.full.min.js"></script>
+<script src="engine.js"></script>
+<script>
+// ===== Mapeamento campos <-> células da planilha (aba "Simula") =====
+// Se o layout da planilha mudar, ajuste só aqui.
+const PLANILHA = 'simulador.xlsm';
+const ENTRADAS = { tipo:'Simula!J8', veiculo:'Simula!J12', entrada:'Simula!J13', prazo:'Simula!N15', taxa:'Simula!N17' };
+const SAIDAS   = { parcela:'Simula!I52', venc:'Simula!J52',
+                   aviso1:'Simula!G32', aviso2:'Simula!G33', aviso3:'Simula!G34' };
+
+const $ = id => document.getElementById(id);
+const brl = v => (typeof v === 'number' ? v : 0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct = v => (v*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '%';
+const num = s => parseFloat(String(s).replace(/[^\d,-]/g,'').replace(',','.')) || 0;
+const dataBR = serial => { if (typeof serial !== 'number' || serial < 1) return '';
+  const d = new Date(Date.UTC(1899,11,30) + serial*864e5); return d.toLocaleDateString('pt-BR',{timeZone:'UTC'}); };
+
+document.querySelectorAll('.money').forEach(el => el.addEventListener('input', () => {
+  const d = el.value.replace(/\D/g,'').replace(/^0+/,'') || '0';
+  el.value = brl(parseInt(d,10)/100);
+}));
+$('prazo').addEventListener('input', e => e.target.value = e.target.value.replace(/\D/g,''));
+$('taxa').addEventListener('input', e => e.target.value = e.target.value.replace(/[^\d,]/g,''));
+
+let sim = null, timer = null;
+function agendar(){ clearTimeout(timer); $('resBox').classList.add('busy'); timer = setTimeout(calcular, 150); }
+['tipo','veiculo','entrada','prazo','taxa'].forEach(id => $(id).addEventListener('input', agendar));
+
+function calcular(){
+  const veic = num($('veiculo').value), ent = num($('entrada').value);
+  $('pctEntrada').textContent = veic ? (ent/veic*100).toLocaleString('pt-BR',{maximumFractionDigits:2}) + '% de entrada' : '';
+  if (!sim) return;
+  const prazo = parseInt($('prazo').value,10) || 0;
+  sim.set({ [ENTRADAS.tipo]: $('tipo').value, [ENTRADAS.veiculo]: veic, [ENTRADAS.entrada]: ent,
+            [ENTRADAS.prazo]: prazo, [ENTRADAS.taxa]: num($('taxa').value)/100 });
+  const g = k => sim.get(SAIDAS[k]);
+  const p = g('parcela');
+  $('parcela').textContent = (typeof p === 'number' && p > 0) ? 'R$ ' + brl(p) : '–';
+  $('venc').textContent = dataBR(g('venc')) ? '1º vencimento: ' + dataBR(g('venc')) : '';
+  $('avisos').innerHTML = ['aviso1','aviso2','aviso3'].map(g).filter(t => typeof t === 'string' && t.trim())
+    .map(t => { const p = document.createElement('p'); p.textContent = t.replace(/^\*+/,''); return p.outerHTML; }).join('');
+  $('resBox').classList.remove('busy');
+}
+
+fetch(PLANILHA, {cache:'no-cache'})
+  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+  .then(buf => { sim = Simulador.load(buf); $('status').remove(); calcular(); })
+  .catch(e => { $('status').textContent = 'Não foi possível carregar a planilha (' + e.message + ').'; });
+calcular();
+</script>
+</body>
+</html>
