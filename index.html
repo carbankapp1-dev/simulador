@@ -8,8 +8,6 @@
   :root{--verde:#46da86;--azul:#111741;--azul-escuro:#142037;
     --bg:#f3f5f8;--card:#fff;--ink:var(--azul-escuro);--muted:#5b6475;--line:#d9dee7;
     --accent:var(--azul);--onaccent:#fff;--green:#e8faf0;--greenb:var(--verde);--warn:#a15c00}
-  @media (prefers-color-scheme: dark){:root{--bg:var(--azul-escuro);--card:var(--azul);--ink:#e8ecf3;--muted:#9aa4b8;--line:#26305a;
-    --accent:var(--verde);--onaccent:var(--azul);--green:#16305a;--warn:#f0b35a}}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
   main{max-width:520px;margin:0 auto;padding:24px 16px 48px}
@@ -88,7 +86,7 @@
 const PLANILHA = 'simulador.xlsm';
 const ENTRADAS = { tipo:'Simula!J8', veiculo:'Simula!J12', entrada:'Simula!J13', prazo:'Simula!N15', taxa:'Simula!N17' };
 const SAIDAS   = { parcela:'Simula!I52', venc:'Simula!J52',
-                   aviso1:'Simula!G32', aviso2:'Simula!G33', aviso3:'Simula!G34' };
+                   aviso1:'Simula!G32' };
 
 const $ = id => document.getElementById(id);
 const brl = v => (typeof v === 'number' ? v : 0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -119,7 +117,7 @@ function calcular(){
   const p = g('parcela');
   $('parcela').textContent = (typeof p === 'number' && p > 0) ? 'R$ ' + brl(p) : '–';
   $('venc').textContent = dataBR(g('venc')) ? '1º vencimento: ' + dataBR(g('venc')) : '';
-  $('avisos').innerHTML = ['aviso1','aviso2','aviso3'].map(g).filter(t => typeof t === 'string' && t.trim())
+  $('avisos').innerHTML = ['aviso1'].map(g).filter(t => typeof t === 'string' && t.trim())
     .map(t => { const p = document.createElement('p'); p.textContent = t.replace(/^\*+/,''); return p.outerHTML; }).join('');
   $('resBox').classList.remove('busy');
 }
