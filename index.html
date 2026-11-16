@@ -35,7 +35,6 @@
 <body>
 <main>
   <h1>Simulador de Financiamento</h1>
-  <p class="sub">Preencha os campos verdes. O cálculo usa as fórmulas da planilha <code>simulador.xlsm</code>.</p>
 
   <div class="card">
     <div class="f">
@@ -46,21 +45,25 @@
     </div>
     <div class="f">
       <label for="veiculo">Valor do veículo (R$)</label>
-      <input id="veiculo" class="money" inputmode="numeric" value="150.000,00">
+      <input id="veiculo" class="money" inputmode="numeric" placeholder="0,00">
     </div>
     <div class="f">
       <label for="entrada">Entrada (R$)</label>
-      <input id="entrada" class="money" inputmode="numeric" value="70.000,00">
+      <input id="entrada" class="money" inputmode="numeric" placeholder="0,00">
       <div class="hint" id="pctEntrada"></div>
     </div>
     <div class="row">
       <div class="f">
         <label for="prazo">Qtde de pagamentos</label>
-        <input id="prazo" inputmode="numeric" value="60">
+        <input id="prazo" inputmode="numeric" placeholder="0">
       </div>
       <div class="f">
-        <label for="taxa">Taxa de juros a.m. (%)</label>
-        <input id="taxa" inputmode="decimal" value="1,41">
+        <label for="taxa">Taxa de juros a.m.</label>
+        <select id="taxa">
+          <option value="" selected disabled>Selecione</option>
+          <option value="1,45">1,45%</option><option value="1,50">1,50%</option><option value="1,55">1,55%</option>
+          <option value="1,60">1,60%</option><option value="1,65">1,65%</option><option value="1,70">1,70%</option>
+        </select>
       </div>
     </div>
   </div>
@@ -96,11 +99,10 @@ const dataBR = serial => { if (typeof serial !== 'number' || serial < 1) return 
   const d = new Date(Date.UTC(1899,11,30) + serial*864e5); return d.toLocaleDateString('pt-BR',{timeZone:'UTC'}); };
 
 document.querySelectorAll('.money').forEach(el => el.addEventListener('input', () => {
-  const d = el.value.replace(/\D/g,'').replace(/^0+/,'') || '0';
-  el.value = brl(parseInt(d,10)/100);
+  const d = el.value.replace(/\D/g,'').replace(/^0+/,'');
+  el.value = d ? brl(parseInt(d,10)/100) : '';
 }));
 $('prazo').addEventListener('input', e => e.target.value = e.target.value.replace(/\D/g,''));
-$('taxa').addEventListener('input', e => e.target.value = e.target.value.replace(/[^\d,]/g,''));
 
 let sim = null, timer = null;
 function agendar(){ clearTimeout(timer); $('resBox').classList.add('busy'); timer = setTimeout(calcular, 150); }
@@ -111,6 +113,10 @@ function calcular(){
   $('pctEntrada').textContent = veic ? (ent/veic*100).toLocaleString('pt-BR',{maximumFractionDigits:2}) + '% de entrada' : '';
   if (!sim) return;
   const prazo = parseInt($('prazo').value,10) || 0;
+  if (!veic || !prazo || !$('taxa').value || ent >= veic) {
+    $('parcela').textContent = '–'; $('venc').textContent = ''; $('avisos').innerHTML = '';
+    $('resBox').classList.remove('busy'); return;
+  }
   sim.set({ [ENTRADAS.tipo]: $('tipo').value, [ENTRADAS.veiculo]: veic, [ENTRADAS.entrada]: ent,
             [ENTRADAS.prazo]: prazo, [ENTRADAS.taxa]: num($('taxa').value)/100 });
   const g = k => sim.get(SAIDAS[k]);
